@@ -36,6 +36,7 @@ thread_local! {
     pub(in crate::host_window) static ACTIVE_RENDER_SURFACE: RefCell<Option<ActivitySurfaceState>> = const { RefCell::new(None) };
     pub(in crate::host_window) static ACTIVE_RENDER_SURFACE_SIZE: RefCell<Option<(u32, u32)>> = const { RefCell::new(None) };
     static ACTIVE_DISPLAY_ROUND: Cell<bool> = const { Cell::new(false) };
+    static ACTIVE_ROTARY_INPUT: Cell<bool> = const { Cell::new(false) };
     pub(in crate::host_window) static ACTIVE_RENDER_IDENTITY: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
     pub(in crate::host_window) static ACTIVE_RENDER_SCROLL_Y: RefCell<i32> = const { RefCell::new(0) };
     pub(in crate::host_window) static ACTIVE_DIALOG_ITEM_SCROLL_OFFSET: RefCell<usize> = const { RefCell::new(0) };
@@ -262,6 +263,7 @@ pub(in crate::host_window) fn install_render_surface_state(
         *size.borrow_mut() = Some((request.width, request.height));
     });
     ACTIVE_DISPLAY_ROUND.with(|round| round.set(request.display_round));
+    ACTIVE_ROTARY_INPUT.with(|rotary| rotary.set(request.rotary_input));
     ACTIVE_RENDER_IDENTITY.with(|identity| {
         *identity.borrow_mut() =
             Some((request.package_name.clone(), request.activity_name.clone()));
@@ -1408,6 +1410,36 @@ fn session_touch_hold(host: &dyn SessionSurfaceHost, x: u32, y: u32, hold_ms: u6
     }
 }
 
+pub(in crate::host_window) const HOST_WHEEL_PIXELS_PER_ROTARY_DETENT: f64 = 48.0;
+
+pub(in crate::host_window) fn active_rotary_input() -> bool {
+    ACTIVE_ROTARY_INPUT.with(Cell::get)
+}
+
+pub(in crate::host_window) fn session_rotary_scroll(
+    host: &dyn SessionSurfaceHost,
+    axis_scroll: f32,
+) -> Result<()> {
+    let handler = ACTIVE_CLICK_HANDLER
+        .with(|handler| *handler.borrow())
+        .ok_or_else(|| WinedroidError::new("rotary has no active Activity click handler"))?;
+
+    let handled = handler.rotary_scroll(axis_scroll)?;
+    let mut refresh = NativeRefreshResult::default();
+    if handled != 0 {
+        refresh = refresh_after_click(host, handler, PostInputRefresh::ReadCommittedSurface)?;
+        request_redraw_after_post_input(host, PostInputRefresh::ReadCommittedSurface);
+    }
+    if crate::trace::enabled("click") {
+        println!("Host rotary scroll");
+        println!("  axis scroll: {axis_scroll}");
+        println!("  handled: {}", handled != 0);
+        print_refresh_result(&refresh);
+    }
+
+    Ok(())
+}
+
 pub(in crate::host_window) fn session_touch_swipe(
     host: &dyn SessionSurfaceHost,
     start: (u32, u32),
@@ -2494,6 +2526,11 @@ fn execute_automation_step(
             }
             Ok(injected_at.elapsed().as_millis() as u64)
         }
+        AutomationAction::Rotary { axis_scroll } => {
+            let injected_at = Instant::now();
+            session_rotary_scroll(host, *axis_scroll)?;
+            Ok(injected_at.elapsed().as_millis() as u64)
+        }
         AutomationAction::WaitIdle { timeout_ms } => {
             let injected_at = Instant::now();
             let deadline = injected_at + Duration::from_millis(*timeout_ms);
@@ -2922,6 +2959,7 @@ fn describe_automation_action(action: &AutomationAction) -> String {
             Some((x, y)) => format!("scroll {delta_y} {x}:{y}"),
             None => format!("scroll {delta_y}"),
         },
+        AutomationAction::Rotary { axis_scroll } => format!("rotary {axis_scroll}"),
         AutomationAction::Key { name } => format!("key {name:?}"),
         AutomationAction::Text { text } => format!("text {text:?}"),
         AutomationAction::WaitIdle { timeout_ms } => format!("waitidle {timeout_ms}ms"),
@@ -3525,6 +3563,7 @@ mod scheduled_surface_tests {
                 test_click_touch,
                 test_touch_hold,
                 test_touch_swipe,
+                test_rotary_scroll,
                 test_click_dialog_button,
                 test_click_dialog_item,
                 test_focus_view,
@@ -3556,6 +3595,10 @@ mod scheduled_surface_tests {
         _hold_ms: u64,
     ) -> Result<i32> {
         Ok(1)
+    }
+
+    unsafe fn test_rotary_scroll(_: *const std::ffi::c_void, _: f32) -> Result<i32> {
+        Ok(0)
     }
 
     unsafe fn test_touch_swipe(

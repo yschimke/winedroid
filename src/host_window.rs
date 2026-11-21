@@ -18,6 +18,7 @@ pub struct ActivityWindowRequest {
     pub width: u32,
     pub height: u32,
     pub display_round: bool,
+    pub rotary_input: bool,
     pub detail_lines: Vec<String>,
     pub text_elements: Vec<ActivityTextElement>,
     pub runtime_canvas_frames: Vec<ActivityRuntimeCanvasFrame>,
@@ -519,6 +520,7 @@ pub struct ActivityClickHandler {
     click_touch: unsafe fn(*const c_void, u32, u32) -> Result<i32>,
     touch_hold: unsafe fn(*const c_void, u32, u32, u64) -> Result<i32>,
     touch_swipe: unsafe fn(*const c_void, (u32, u32), (u32, u32), u64, Option<u32>) -> Result<i32>,
+    rotary_scroll: unsafe fn(*const c_void, f32) -> Result<i32>,
     click_dialog_button: unsafe fn(*const c_void, usize, usize) -> Result<i32>,
     click_dialog_item: unsafe fn(*const c_void, usize, usize) -> Result<i32>,
     focus_view: unsafe fn(*const c_void, i32) -> Result<i32>,
@@ -544,6 +546,7 @@ impl ActivityClickHandler {
             u64,
             Option<u32>,
         ) -> Result<i32>,
+        rotary_scroll: unsafe fn(*const c_void, f32) -> Result<i32>,
         click_dialog_button: unsafe fn(*const c_void, usize, usize) -> Result<i32>,
         click_dialog_item: unsafe fn(*const c_void, usize, usize) -> Result<i32>,
         focus_view: unsafe fn(*const c_void, i32) -> Result<i32>,
@@ -560,6 +563,7 @@ impl ActivityClickHandler {
             click_touch,
             touch_hold,
             touch_swipe,
+            rotary_scroll,
             click_dialog_button,
             click_dialog_item,
             focus_view,
@@ -595,6 +599,10 @@ impl ActivityClickHandler {
         steps: Option<u32>,
     ) -> Result<i32> {
         unsafe { (self.touch_swipe)(self.context, start, end, duration_ms, steps) }
+    }
+
+    fn rotary_scroll(&self, axis_scroll: f32) -> Result<i32> {
+        unsafe { (self.rotary_scroll)(self.context, axis_scroll) }
     }
 
     fn click_dialog_button(&self, dialog_index: usize, button_index: usize) -> Result<i32> {
@@ -643,6 +651,7 @@ impl ActivityWindowRequest {
             width: display_size.width(),
             height: display_size.height(),
             display_round: false,
+            rotary_input: false,
             detail_lines: Vec::new(),
             text_elements: Vec::new(),
             runtime_canvas_frames: Vec::new(),
@@ -666,6 +675,11 @@ impl ActivityWindowRequest {
 
     pub fn with_display_round(mut self, display_round: bool) -> Self {
         self.display_round = display_round;
+        self
+    }
+
+    pub fn with_rotary_input(mut self, rotary_input: bool) -> Self {
+        self.rotary_input = rotary_input;
         self
     }
 

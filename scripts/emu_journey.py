@@ -234,7 +234,7 @@ class Driver:
                 self.artifact_path(args[1]).write_bytes(raw)
             else:
                 sys.stdout.write(raw.decode(errors="replace") + "\n")
-        elif verb in ("down", "move", "up", "scroll"):
+        elif verb in ("down", "move", "up", "scroll", "rotary"):
             raise JourneyError(
                 f"line {line_number}: `{verb}` is not supported on the emulator driver yet"
             )

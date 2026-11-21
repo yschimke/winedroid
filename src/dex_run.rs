@@ -272,6 +272,11 @@ impl DexActivityRuntime {
         )
     }
 
+    pub fn rotary_scroll(&self, axis_scroll: f32) -> Result<i32> {
+        self.program
+            .perform_runtime_view_rotary_scroll(axis_scroll, 0)
+    }
+
     pub fn focus_view(&self, view_id: i32) -> Result<i32> {
         self.program.focus_view_by_id(view_id)
     }

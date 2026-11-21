@@ -243,6 +243,20 @@ impl DexRunInvocationHandler<'_> {
             return Ok(DexInvocationResult::Value(DexValue::Int(added)));
         }
 
+        if method.name == "dispatchGenericMotionEvent"
+            && proto_descriptor == "(Landroid/view/MotionEvent;)Z"
+            && is_bootstrap_class_descriptor(&method.class_descriptor)
+        {
+            let super_call = invocation.kind == DexInvokeKind::Super;
+            if let Some(handled) = self.program.view_dispatch_generic_motion_event_call(
+                &invocation,
+                super_call,
+                self.depth,
+            ) {
+                return Ok(DexInvocationResult::Value(DexValue::Int(handled?)));
+            }
+        }
+
         if method.class_descriptor == "Landroid/view/View;"
             && method.name == "performClick"
             && proto_descriptor == "()Z"

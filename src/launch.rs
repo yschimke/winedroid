@@ -183,6 +183,7 @@ fn run_installed(
     let frame_interval_nanos = configured_frame_interval_nanos(&config);
     let display_size = config.display_size();
     let display_round = config.display_shape().is_round();
+    let rotary_input = config.device() == crate::config::WinedroidDevice::Watch;
     let shared_storage_dir = prefix.storage_root();
     let activity_runtime = {
         let _span = trace::span("runtime", "start activity runtime worker");
@@ -201,6 +202,7 @@ fn run_installed(
         display_size,
     )
     .with_display_round(display_round)
+    .with_rotary_input(rotary_input)
     .with_frame_interval_nanos(frame_interval_nanos)
     .with_screenshots_dir(Some(crate::external_storage::screenshots_dir(prefix)?));
     {
@@ -333,6 +335,7 @@ fn run_installed(
             click_activity_touch,
             touch_activity_hold,
             touch_activity_swipe,
+            rotary_activity_scroll,
             click_activity_dialog_button,
             click_activity_dialog_item,
             focus_activity_view,

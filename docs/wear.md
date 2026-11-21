@@ -20,6 +20,7 @@ values, like the display size.
 | `-watch` resources | `uiMode` type is a real match/precedence input. Before this change it was ignored, so a phone could pick a `-watch` value on a tie | `ResourceTypes.cpp#ResTable_config::match, isBetterThan` |
 | `-round` / `-notround` resources | `ResTable_config.screenLayout2` is parsed and matched in both the runtime and the layout projection | `ResourceTypes.h#screenLayout2, MASK_SCREENROUND` |
 | `PackageManager.hasSystemFeature` | `android.hardware.type.watch` is true on a watch. Every other feature is still false | `PackageManager.java#FEATURE_WATCH` |
+| Rotary crown | host wheel → `MotionEvent` `ACTION_SCROLL`, `SOURCE_ROTARY_ENCODER`, `AXIS_SCROLL` (one notch = 1.0, wheel down is negative). Delivered down the focus chain: app `dispatchGenericMotionEvent` overrides first (`super` continues the framework walk), then `OnGenericMotionListener` / `onGenericMotionEvent` while unwinding. With no focused view it is dropped. `rotary <axis>` automation verb | `ViewRootImpl.java#processGenericMotionEvent`, `View.java#dispatchGenericMotionEvent`, `ViewGroup.java#dispatchGenericFocusedEvent` |
 | Round panel | the host masks every presented, dumped and screenshotted frame to the inscribed circle, and pointer presses outside it are dropped | host concern; the runtime still sees a square surface, as on a device |
 
 The default watch display is `227x227` round, the logical size of the 454px
@@ -40,11 +41,13 @@ Each gap is open source, so it can be built by the normal workflow in
 [AGENTS.md](../AGENTS.md). Build each one only after a benchmark Wear APK
 reaches it.
 
-- **Rotary input.** The host wheel still scrolls the projected surface
-  directly. A crown is a `MotionEvent` with `ACTION_SCROLL`,
-  `SOURCE_ROTARY_ENCODER` and `AXIS_SCROLL`, routed through
-  `View.dispatchGenericMotionEvent` to the focused view. Compose's
-  `onRotaryScrollEvent` and `rotaryScrollable` consume it there.
+- **Rotary input beyond app code.** Framework widgets' own rotary handling
+  (`ScrollView` / `AbsListView.onGenericMotionEvent`) is not modelled, so a
+  focused framework `ScrollView` does not scroll from the crown. androidx
+  `RecyclerView` and Compose handle rotary in app bytecode, so they get it.
+  `View.setEnabled` is not modelled, so the listener's enabled gate always
+  passes. The real-Android journey driver rejects `rotary`: Android 14's
+  `input` command has no rotary source.
 - **Stem and back buttons.** `KEYCODE_STEM_PRIMARY`, `KEYCODE_STEM_1..3`, and
   back as a hardware key rather than a gesture.
 - **Framework watch themes.** The probe still reserves an action-bar band on a
@@ -185,9 +188,9 @@ framework method. It must never answer them with a fake success.
 
 ### Suggested order
 
-1. Done: single-device watch (this branch).
-2. Rotary and stem input. These are small, open, and reached by any Compose
-   for Wear app.
+1. Done: single-device watch.
+2. Done: rotary input. Next is stem buttons, which are small, open, and
+   reached by any Compose for Wear app.
 3. Service and Binder model (prerequisites 1 and 2), proven first on
    something open such as a Tiles host.
 4. `winedroid pair`: two processes, link, node bus and debug CLI, with no GMS.

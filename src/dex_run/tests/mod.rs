@@ -19,6 +19,7 @@ mod bootstrap_fields;
 mod class_new_instance_contract;
 mod content_storage_smoke;
 mod coroutine_contract;
+mod generic_motion_contract;
 mod input;
 mod java_box_locale;
 mod java_concurrency_atomic;

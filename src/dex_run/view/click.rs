@@ -635,7 +635,7 @@ impl DexProgram {
         )
     }
 
-    fn allocate_motion_event_with_source_and_times(
+    pub(super) fn allocate_motion_event_with_source_and_times(
         &self,
         action: i32,
         x: f32,
@@ -793,7 +793,7 @@ impl DexProgram {
         Ok(0)
     }
 
-    fn execute_optional_view_motion_method(
+    pub(super) fn execute_optional_view_motion_method(
         &self,
         view: &DexValue,
         class_descriptor: &str,

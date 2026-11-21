@@ -83,7 +83,10 @@ resources are selected, and `PackageManager.hasSystemFeature` reports
 defaults to `round` for a watch and `rectangular` for a phone. A round display
 sets `Configuration.SCREENLAYOUT_ROUND_YES`, which selects `-round` resources
 and makes `Configuration.isScreenRound()` true. The host draws the panel as a
-circle and ignores pointer input outside it. When `display` is omitted, a watch
+circle and ignores pointer input outside it. On a watch, the mouse wheel
+(or trackpad scroll) is the crown: each wheel notch becomes one rotary
+`ACTION_SCROLL` event with `AXIS_SCROLL` of ±1, sent to the focused view, as
+on a device. Without a focused view, nothing receives it. When `display` is omitted, a watch
 uses a `227x227` round display, the logical size of a 454px xhdpi Wear OS
 emulator. See [wear.md](wear.md) for coverage and the paired phone/watch
 design.

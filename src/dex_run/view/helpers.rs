@@ -986,6 +986,22 @@ pub(in crate::dex_run) fn view_touch_listener_field() -> DexFieldId {
     }
 }
 
+pub(in crate::dex_run) fn view_generic_motion_listener_field() -> DexFieldId {
+    DexFieldId {
+        class_descriptor: "Landroid/view/View;".to_owned(),
+        type_descriptor: "Landroid/view/View$OnGenericMotionListener;".to_owned(),
+        name: "onGenericMotionListener".to_owned(),
+    }
+}
+
+pub(in crate::dex_run) fn motion_event_scroll_axis_field() -> DexFieldId {
+    DexFieldId {
+        class_descriptor: "Landroid/view/MotionEvent;".to_owned(),
+        type_descriptor: "F".to_owned(),
+        name: "axisScroll".to_owned(),
+    }
+}
+
 pub(in crate::dex_run) fn view_drag_listener_field() -> DexFieldId {
     DexFieldId {
         class_descriptor: "Landroid/view/View;".to_owned(),

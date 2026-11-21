@@ -85,6 +85,18 @@ pub(super) unsafe fn touch_activity_swipe(
     Ok(handled)
 }
 
+pub(super) unsafe fn rotary_activity_scroll(
+    context: *const c_void,
+    axis_scroll: f32,
+) -> Result<i32> {
+    let context = &*(context as *const ActivityHostContext);
+    let activity_runtime = &context.activity_runtime;
+    let handled = activity_runtime.rotary_scroll(axis_scroll)?;
+    run_pending_activity_host_actions(activity_runtime)?;
+
+    Ok(handled)
+}
+
 fn android_touch_coordinate_y(y: u32) -> u32 {
     y
 }

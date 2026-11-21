@@ -225,7 +225,9 @@ below; optional trailing hold_ms for long-press on runtime canvas targets),
 scroll <delta_y> [X:Y] (positive scrolls down; point
 defaults to the surface center), swipe X1:Y1 X2:Y2 <duration_ms> [steps]
 (dispatches a real DOWN/MOVE/UP MotionEvent stream to the runtime view root),
-key, text, waitidle,
+rotary <axis_scroll> (one ACTION_SCROLL MotionEvent from SOURCE_ROTARY_ENCODER
+with that AXIS_SCROLL value, delivered down the focus chain; negative scrolls
+forward), key, text, waitidle,
 waittext, assert (text/notext/view/display), screenshot, dump. Tap forms:
 
     tap X:Y [hold_ms]              raw coordinates

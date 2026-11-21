@@ -259,6 +259,19 @@ pub extern "C" fn winedroid_web_wheel(delta_y: f64, x: f64, y: f64) {
     let Some((width, height)) = active_surface_size() else {
         return;
     };
+    if crate::host_window::session::active_rotary_input() {
+        let axis_scroll =
+            -delta_y / crate::host_window::session::HOST_WHEEL_PIXELS_PER_ROTARY_DETENT;
+        if axis_scroll != 0.0 {
+            if let Err(error) =
+                crate::host_window::session::session_rotary_scroll(&BrowserHost, axis_scroll as f32)
+            {
+                crate::trace::event("input", format!("browser rotary failed: {error}"));
+            }
+            wake_runtime_frames();
+        }
+        return;
+    }
     let delta_y = delta_y.round() as i32;
     if delta_y == 0 {
         return;

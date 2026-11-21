@@ -273,6 +273,10 @@ pub(super) fn bootstrap_superclass_descriptor(class_descriptor: &str) -> Option<
         "Landroid/text/style/ForegroundColorSpan;" => Some("Landroid/text/style/CharacterStyle;"),
         "Landroid/text/style/CharacterStyle;" => Some("Ljava/lang/Object;"),
         "Landroid/view/ContextThemeWrapper;" => Some("Landroid/content/ContextWrapper;"),
+        // cite: frameworks-base MotionEvent.java#MotionEvent
+        "Landroid/view/MotionEvent;" => Some("Landroid/view/InputEvent;"),
+        // cite: frameworks-base InputEvent.java#InputEvent
+        "Landroid/view/InputEvent;" => Some("Ljava/lang/Object;"),
         "Landroid/view/View;" => Some("Ljava/lang/Object;"),
         "Landroid/view/ViewGroup;" => Some("Landroid/view/View;"),
         "Landroid/widget/AdapterView;" => Some("Landroid/view/ViewGroup;"),

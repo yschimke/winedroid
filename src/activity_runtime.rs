@@ -75,6 +75,10 @@ enum ActivityRuntimeCommand {
         steps: Option<u32>,
         response: mpsc::Sender<Result<i32>>,
     },
+    RotaryScroll {
+        axis_scroll: f32,
+        response: mpsc::Sender<Result<i32>>,
+    },
     FocusView {
         view_id: i32,
         response: mpsc::Sender<Result<i32>>,
@@ -315,6 +319,15 @@ impl ActivityRuntimeWorker {
             end,
             duration_ms,
             steps,
+            response,
+        })?;
+        receive_activity_runtime_response(receiver)
+    }
+
+    pub(crate) fn rotary_scroll(&self, axis_scroll: f32) -> Result<i32> {
+        let (response, receiver) = mpsc::channel();
+        self.send(ActivityRuntimeCommand::RotaryScroll {
+            axis_scroll,
             response,
         })?;
         receive_activity_runtime_response(receiver)
@@ -635,6 +648,12 @@ fn run_activity_runtime_worker(
                     response,
                     runtime.touch_swipe(start, end, duration_ms, steps),
                 );
+            }
+            ActivityRuntimeCommand::RotaryScroll {
+                axis_scroll,
+                response,
+            } => {
+                send_activity_runtime_response(response, runtime.rotary_scroll(axis_scroll));
             }
             ActivityRuntimeCommand::FocusView { view_id, response } => {
                 send_activity_runtime_response(response, runtime.focus_view(view_id));

@@ -8,6 +8,7 @@ const PAINT_FILTER_BITMAP_FLAG: i32 = 0x02;
 
 mod click;
 mod dynamic_children;
+mod generic_motion;
 mod graphics;
 mod helpers;
 pub(in crate::dex_run) use helpers::*;

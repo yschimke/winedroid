@@ -112,6 +112,10 @@ impl ActivityRuntimeWorker {
         self.runtime.touch_swipe(start, end, duration_ms, steps)
     }
 
+    pub(crate) fn rotary_scroll(&self, axis_scroll: f32) -> Result<i32> {
+        self.runtime.rotary_scroll(axis_scroll)
+    }
+
     pub(crate) fn focus_view(&self, view_id: i32) -> Result<i32> {
         self.runtime.focus_view(view_id)
     }

@@ -4,12 +4,12 @@ use crate::error::{Result, WinedroidError};
 
 const DEFAULT_WAIT_TIMEOUT_MS: u64 = 5000;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct AutomationScript {
     pub(crate) steps: Vec<AutomationStep>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct AutomationStep {
     pub(crate) line: usize,
     pub(crate) delay_ms: u64,
@@ -23,7 +23,7 @@ pub(crate) enum TapTarget {
     ViewId(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum AutomationAction {
     Tap {
         target: TapTarget,
@@ -44,6 +44,9 @@ pub(crate) enum AutomationAction {
     Scroll {
         delta_y: i32,
         point: Option<(u32, u32)>,
+    },
+    Rotary {
+        axis_scroll: f32,
     },
     Key {
         name: KeyName,
@@ -254,6 +257,12 @@ fn parse_action(line: usize, verb: &str, args: &[String]) -> Result<AutomationAc
             };
             Ok(AutomationAction::Scroll { delta_y, point })
         }
+        "rotary" => {
+            expect_arg_count(line, verb, args, 1, 1)?;
+            Ok(AutomationAction::Rotary {
+                axis_scroll: parse_finite_f32(&args[0], line, "axis_scroll")?,
+            })
+        }
         "key" => {
             expect_arg_count(line, verb, args, 1, 1)?;
             Ok(AutomationAction::Key {
@@ -409,6 +418,15 @@ fn parse_i32(token: &str, line: usize, field: &str) -> Result<i32> {
     })
 }
 
+fn parse_finite_f32(token: &str, line: usize, field: &str) -> Result<f32> {
+    match token.parse::<f32>() {
+        Ok(value) if value.is_finite() && value != 0.0 => Ok(value),
+        _ => Err(WinedroidError::new(format!(
+            "automation line {line}: {field} must be a nonzero number, got `{token}`"
+        ))),
+    }
+}
+
 fn parse_positive_u32(token: &str, line: usize, field: &str) -> Result<u32> {
     let value = parse_u32(token, line, field)?;
     if value == 0 {
@@ -529,6 +547,32 @@ mod tests {
                 point: Some((210, 380)),
             }
         );
+    }
+
+    #[test]
+    fn parses_rotary_axis_and_rejects_zero_or_non_numeric() {
+        let script = parse("0 rotary -1.5\n0 rotary 2\n");
+
+        assert_eq!(
+            script.steps[0].action,
+            AutomationAction::Rotary { axis_scroll: -1.5 }
+        );
+        assert_eq!(
+            script.steps[1].action,
+            AutomationAction::Rotary { axis_scroll: 2.0 }
+        );
+        for invalid in [
+            "0 rotary 0",
+            "0 rotary up",
+            "0 rotary",
+            "0 rotary 1 2",
+            "0 rotary NaN",
+        ] {
+            assert!(
+                AutomationScript::parse(invalid).is_err(),
+                "`{invalid}` should be rejected"
+            );
+        }
     }
 
     #[test]

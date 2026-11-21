@@ -408,6 +408,27 @@ impl ApplicationHandler for DesktopApp {
                 ElementState::Pressed => self.pointer_pressed(),
                 ElementState::Released => self.pointer_released(),
             },
+            WindowEvent::MouseWheel { delta, .. }
+                if self.interactive_input && crate::host_window::session::active_rotary_input() =>
+            {
+                let axis_scroll = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => f64::from(y),
+                    MouseScrollDelta::PixelDelta(position) => {
+                        position.y
+                            / crate::host_window::session::HOST_WHEEL_PIXELS_PER_ROTARY_DETENT
+                    }
+                };
+                if axis_scroll != 0.0 {
+                    if let Some(host) = self.window_host() {
+                        if let Err(error) = crate::host_window::session::session_rotary_scroll(
+                            &host,
+                            axis_scroll as f32,
+                        ) {
+                            self.set_error(error);
+                        }
+                    }
+                }
+            }
             WindowEvent::MouseWheel { delta, .. } if self.interactive_input => {
                 let delta_y = match delta {
                     MouseScrollDelta::LineDelta(_, y) => (y * -48.0).round() as i32,

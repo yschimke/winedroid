@@ -2555,6 +2555,34 @@ impl DexProgram {
             return Some(DexExecutionResult::Void);
         }
 
+        // cite: frameworks-base View.java#setOnGenericMotionListener
+        if method.class_descriptor == "Landroid/view/View;"
+            && method.name == "setOnGenericMotionListener"
+            && method
+                .proto
+                .descriptor_is("(Landroid/view/View$OnGenericMotionListener;)V")
+        {
+            let invocation = invocation?;
+            self.write_view_listener_field(
+                invocation,
+                "Landroid/view/View;",
+                "Landroid/view/View$OnGenericMotionListener;",
+                "onGenericMotionListener",
+            )?;
+
+            return Some(DexExecutionResult::Void);
+        }
+
+        // cite: frameworks-base View.java#onGenericMotionEvent
+        if matches!(
+            method.class_descriptor.as_str(),
+            "Landroid/view/View;" | "Landroid/view/ViewGroup;"
+        ) && method.name == "onGenericMotionEvent"
+            && method.proto.descriptor_is("(Landroid/view/MotionEvent;)Z")
+        {
+            return Some(DexExecutionResult::Int(0));
+        }
+
         if method.class_descriptor == "Landroid/view/View;"
             && method.name == "setOnTouchListener"
             && method
@@ -4081,6 +4109,17 @@ impl DexProgram {
         {
             let invocation = invocation?;
             let value = self.motion_event_axis_value(invocation, &motion_event_y_field())?;
+
+            return Some(DexExecutionResult::Value(DexValue::Float(value)));
+        }
+
+        // cite: frameworks-base MotionEvent.java#getAxisValue, AXIS_SCROLL
+        if method.class_descriptor == "Landroid/view/MotionEvent;"
+            && method.name == "getAxisValue"
+            && matches!(method.proto.descriptor().as_str(), "(I)F" | "(II)F")
+        {
+            let invocation = invocation?;
+            let value = self.motion_event_get_axis_value(invocation)?;
 
             return Some(DexExecutionResult::Value(DexValue::Float(value)));
         }
