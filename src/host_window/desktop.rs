@@ -146,7 +146,7 @@ impl DesktopApp {
                 window.scale_factor() as f32,
             )?
         };
-        Ok(Some(image))
+        crate::host_window::session::present_on_display_panel(image).map(Some)
     }
 
     fn render_present_image(&mut self) -> Result<Option<skia_renderer::SkiaSurfaceImage>> {
@@ -243,6 +243,13 @@ impl DesktopApp {
 
     fn pointer_pressed(&mut self) {
         if !self.interactive_input {
+            return;
+        }
+        if !crate::host_window::session::display_panel_contains(
+            self.cursor,
+            self.logical_size.0,
+            self.logical_size.1,
+        ) {
             return;
         }
         let target =

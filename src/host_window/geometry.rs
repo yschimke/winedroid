@@ -276,3 +276,10 @@ fn dialog_button_width(text: &str) -> u32 {
     let character_count = u32::try_from(text.chars().count()).unwrap_or(u32::MAX);
     character_count.saturating_mul(9).saturating_add(24).max(48)
 }
+
+pub(crate) fn round_display_contains(point: (f64, f64), width: u32, height: u32) -> bool {
+    let radius = f64::from(width.min(height)) / 2.0;
+    let dx = point.0 - f64::from(width) / 2.0;
+    let dy = point.1 - f64::from(height) / 2.0;
+    dx * dx + dy * dy <= radius * radius
+}

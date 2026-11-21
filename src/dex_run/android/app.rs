@@ -78,6 +78,7 @@ impl DexProgram {
             resource_ui_mode: self.config.android_configuration_ui_mode(),
             resource_display_width: display_size.width() as u16,
             resource_display_height: display_size.height() as u16,
+            resource_screen_round: self.config.display_shape().is_round(),
             runtime_view_roots: runtime.runtime_view_roots[runtime_view_root_start..].to_vec(),
             runtime_canvas_frames: runtime_canvas_frame_snapshot(&runtime),
             view_lookup_ids: runtime.view_lookup_ids[view_lookup_start..].to_vec(),

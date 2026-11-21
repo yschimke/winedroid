@@ -1349,6 +1349,42 @@ fn builtin_context_package_manager_reports_no_features() {
     );
 }
 
+// cite: frameworks-base PackageManager.java#FEATURE_WATCH
+// cite: frameworks-base UiModeManagerService.java#mWatch
+#[test]
+fn package_manager_reports_watch_feature_only_on_watch_device() {
+    let has_feature = DexMethodId {
+        class_descriptor: "Landroid/content/pm/PackageManager;".to_owned(),
+        name: "hasSystemFeature".to_owned(),
+        proto: crate::dex::DexProto {
+            shorty: "ZL".to_owned(),
+            return_type: "Z".to_owned(),
+            parameters: vec!["Ljava/lang/String;".to_owned()],
+        },
+    };
+    let feature_invocation = |feature: &str| {
+        test_invocation(vec![
+            DexValue::Reference(std::rc::Rc::from(
+                "Landroid/content/pm/PackageManager;.bootstrap",
+            )),
+            DexValue::String(std::rc::Rc::from(feature)),
+        ])
+    };
+    let watch = DexProgram::with_config(Vec::new(), crate::config::WinedroidConfig::watch());
+    let phone = DexProgram::new(Vec::new());
+
+    for (program, feature, expected) in [
+        (&watch, "android.hardware.type.watch", 1),
+        (&watch, "android.software.leanback", 0),
+        (&phone, "android.hardware.type.watch", 0),
+    ] {
+        assert_eq!(
+            program.invoke_builtin_method(&has_feature, Some(&feature_invocation(feature))),
+            Some(DexExecutionResult::Int(expected))
+        );
+    }
+}
+
 #[test]
 fn builtin_empty_shared_preferences_returns_absent_and_defaults() {
     let program = DexProgram::new(Vec::new());

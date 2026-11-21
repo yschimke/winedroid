@@ -17,6 +17,7 @@ pub struct ActivityWindowRequest {
     pub title: String,
     pub width: u32,
     pub height: u32,
+    pub display_round: bool,
     pub detail_lines: Vec<String>,
     pub text_elements: Vec<ActivityTextElement>,
     pub runtime_canvas_frames: Vec<ActivityRuntimeCanvasFrame>,
@@ -641,6 +642,7 @@ impl ActivityWindowRequest {
             title: format!("{package_name} - {activity_name}"),
             width: display_size.width(),
             height: display_size.height(),
+            display_round: false,
             detail_lines: Vec::new(),
             text_elements: Vec::new(),
             runtime_canvas_frames: Vec::new(),
@@ -659,6 +661,11 @@ impl ActivityWindowRequest {
         resource_id_names: std::collections::BTreeMap<i32, String>,
     ) -> Self {
         self.resource_id_names = resource_id_names;
+        self
+    }
+
+    pub fn with_display_round(mut self, display_round: bool) -> Self {
+        self.display_round = display_round;
         self
     }
 

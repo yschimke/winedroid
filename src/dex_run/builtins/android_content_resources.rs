@@ -1122,6 +1122,16 @@ impl DexProgram {
         }
 
         if method.class_descriptor == "Landroid/content/res/Configuration;"
+            && method.name == "isScreenRound"
+            && method.proto.descriptor_is("()Z")
+        {
+            let invocation = invocation?;
+            let value = self.configuration_is_screen_round(invocation)?;
+
+            return Some(DexExecutionResult::Int(value));
+        }
+
+        if method.class_descriptor == "Landroid/content/res/Configuration;"
             && method.name == "getLayoutDirection"
             && method.proto.descriptor_is("()I")
         {

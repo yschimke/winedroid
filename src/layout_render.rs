@@ -139,6 +139,7 @@ pub(crate) mod tests {
             resource_ui_mode: 0,
             resource_display_width: 420,
             resource_display_height: 760,
+            resource_screen_round: false,
             runtime_view_roots: Vec::new(),
             runtime_canvas_frames: Vec::new(),
             view_lookup_ids: Vec::new(),

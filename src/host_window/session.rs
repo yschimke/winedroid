@@ -35,6 +35,7 @@ thread_local! {
     pub(in crate::host_window) static AUTOMATION_FRAME_PACER: RefCell<Option<(FrameClock, Instant)>> = const { RefCell::new(None) };
     pub(in crate::host_window) static ACTIVE_RENDER_SURFACE: RefCell<Option<ActivitySurfaceState>> = const { RefCell::new(None) };
     pub(in crate::host_window) static ACTIVE_RENDER_SURFACE_SIZE: RefCell<Option<(u32, u32)>> = const { RefCell::new(None) };
+    static ACTIVE_DISPLAY_ROUND: Cell<bool> = const { Cell::new(false) };
     pub(in crate::host_window) static ACTIVE_RENDER_IDENTITY: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
     pub(in crate::host_window) static ACTIVE_RENDER_SCROLL_Y: RefCell<i32> = const { RefCell::new(0) };
     pub(in crate::host_window) static ACTIVE_DIALOG_ITEM_SCROLL_OFFSET: RefCell<usize> = const { RefCell::new(0) };
@@ -260,6 +261,7 @@ pub(in crate::host_window) fn install_render_surface_state(
     ACTIVE_RENDER_SURFACE_SIZE.with(|size| {
         *size.borrow_mut() = Some((request.width, request.height));
     });
+    ACTIVE_DISPLAY_ROUND.with(|round| round.set(request.display_round));
     ACTIVE_RENDER_IDENTITY.with(|identity| {
         *identity.borrow_mut() =
             Some((request.package_name.clone(), request.activity_name.clone()));
@@ -281,6 +283,28 @@ pub(in crate::host_window) fn install_render_surface_state(
     Ok(())
 }
 
+pub(in crate::host_window) fn active_display_round() -> bool {
+    ACTIVE_DISPLAY_ROUND.with(Cell::get)
+}
+
+pub(in crate::host_window) fn present_on_display_panel(
+    mut image: skia_renderer::SkiaSurfaceImage,
+) -> Result<skia_renderer::SkiaSurfaceImage> {
+    if active_display_round() {
+        skia_renderer::mask_round_display(&mut image)?;
+    }
+    Ok(image)
+}
+
+pub(in crate::host_window) fn display_panel_contains(
+    point: (f64, f64),
+    surface_width: u32,
+    surface_height: u32,
+) -> bool {
+    !active_display_round()
+        || crate::host_window::round_display_contains(point, surface_width, surface_height)
+}
+
 fn dump_render_surface_if_requested(
     width: u32,
     height: u32,
@@ -290,7 +314,7 @@ fn dump_render_surface_if_requested(
         return Ok(());
     }
 
-    let image = skia_renderer::render_activity_surface(
+    let image = present_on_display_panel(skia_renderer::render_activity_surface(
         width,
         height,
         &surface.message,
@@ -301,7 +325,7 @@ fn dump_render_surface_if_requested(
         surface.action_bar.as_ref(),
         surface.floating_panel,
         surface.window_background,
-    )?;
+    )?)?;
     dump_renderer_png_if_requested(&image)
 }
 
@@ -317,7 +341,7 @@ pub(in crate::host_window) fn dump_active_render_surface_if_requested() -> Resul
         return Ok(());
     };
     let surface = scrolled_render_surface(&surface, width, height);
-    let image = skia_renderer::render_activity_surface(
+    let image = present_on_display_panel(skia_renderer::render_activity_surface(
         width,
         height,
         &surface.message,
@@ -328,7 +352,7 @@ pub(in crate::host_window) fn dump_active_render_surface_if_requested() -> Resul
         surface.action_bar.as_ref(),
         surface.floating_panel,
         surface.window_background,
-    )?;
+    )?)?;
 
     dump_renderer_png_if_requested(&image)
 }
@@ -674,6 +698,10 @@ pub(in crate::host_window) fn rendered_click_target_at(
     surface_height: u32,
 ) -> Option<RenderedClickTarget> {
     if point.0 < 0.0 || point.1 < 0.0 {
+        return None;
+    }
+
+    if !display_panel_contains(point, surface_width, surface_height) {
         return None;
     }
 
@@ -2795,7 +2823,7 @@ fn screenshot_active_surface(path: &Path) -> Result<()> {
         ));
     };
     let surface = scrolled_render_surface(&surface, width, height);
-    let image = skia_renderer::render_activity_surface(
+    let image = present_on_display_panel(skia_renderer::render_activity_surface(
         width,
         height,
         &surface.message,
@@ -2806,7 +2834,7 @@ fn screenshot_active_surface(path: &Path) -> Result<()> {
         surface.action_bar.as_ref(),
         surface.floating_panel,
         surface.window_background,
-    )?;
+    )?)?;
     fs::write(path, &image.png).map_err(|error| {
         WinedroidError::with_source(
             format!("failed to write automation screenshot `{}`", path.display()),

@@ -530,6 +530,7 @@ impl DexProgram {
             display_size.width() as u16,
             display_size.height() as u16,
         )
+        .with_screen_round(self.config.display_shape().is_round())
     }
 
     #[cfg(test)]

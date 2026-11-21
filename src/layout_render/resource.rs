@@ -722,6 +722,7 @@ pub(crate) fn layout_resource_config_from_snapshot(
         snapshot.resource_display_width,
         snapshot.resource_display_height,
     )
+    .with_screen_round(snapshot.resource_screen_round)
 }
 
 pub(crate) fn runtime_texts_by_id(snapshot: &DexViewSnapshot) -> BTreeMap<u32, String> {

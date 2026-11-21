@@ -50,7 +50,7 @@ cargo build --release --locked --bin winedroid
 
 App data lives in `~/.winedroid/default`. Set `WINEDROID_PREFIX` to use another
 directory. See [usage](docs/usage.md) for package management, display settings,
-and profiling.
+and profiling, and [Wear OS](docs/wear.md) for watch devices.
 
 ## Run in your browser
 

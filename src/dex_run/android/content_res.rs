@@ -19,6 +19,8 @@ const TYPED_VALUE_TYPE_INT_COLOR_ARGB8: i32 = 0x1c;
 const ANDROID_RESOURCE_NAMESPACE: &str = "http://schemas.android.com/apk/res/android";
 const CONFIGURATION_TOUCHSCREEN_NOTOUCH: i32 = 1;
 const CONFIGURATION_ORIENTATION_PORTRAIT: i32 = 1;
+const CONFIGURATION_SCREENLAYOUT_ROUND_MASK: i32 = 0x300;
+const CONFIGURATION_SCREENLAYOUT_ROUND_YES: i32 = 0x200;
 const CONFIGURATION_ORIENTATION_LANDSCAPE: i32 = 2;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -96,6 +98,25 @@ impl DexProgram {
         Some(())
     }
 
+    pub(in crate::dex_run) fn configuration_is_screen_round(
+        &self,
+        invocation: &DexInvocation,
+    ) -> Option<i32> {
+        let receiver = invocation.arguments.first()?;
+        let screen_layout = match self
+            .read_stored_instance_field(receiver, &configuration_int_field("screenLayout"))
+        {
+            Some(DexValue::Int(value)) => value,
+            _ => 0,
+        };
+
+        // cite: frameworks-base Configuration.java#isScreenRound
+        Some(i32::from(
+            screen_layout & CONFIGURATION_SCREENLAYOUT_ROUND_MASK
+                == CONFIGURATION_SCREENLAYOUT_ROUND_YES,
+        ))
+    }
+
     pub(in crate::dex_run) fn write_bootstrap_configuration_fields(&self) {
         let configuration = DexValue::Reference(std::rc::Rc::from(
             "Landroid/content/res/Configuration;.bootstrap",
@@ -126,6 +147,8 @@ impl DexProgram {
         let screen_layout = resource_table::screen_layout_for_display(
             display_size.width() as u16,
             display_size.height() as u16,
+        ) | resource_table::configuration_screen_layout_round_bits(
+            self.config.display_shape().is_round(),
         );
 
         // cite: frameworks-base ResourcesManager.java#applyDisplayMetricsToConfiguration
@@ -4215,6 +4238,43 @@ mod tests {
         );
     }
 
+    // cite: frameworks-base DisplayContent.java#computeScreenConfiguration
+    // cite: frameworks-base Configuration.java#isScreenRound, UI_MODE_TYPE_WATCH
+    #[test]
+    fn watch_configuration_reports_round_screen_and_watch_ui_mode() {
+        let program = DexProgram::with_config(Vec::new(), WinedroidConfig::watch());
+        let configuration = DexValue::Reference(std::rc::Rc::from(
+            "Landroid/content/res/Configuration;.bootstrap",
+        ));
+        let invocation = DexInvocation {
+            kind: crate::dex_interpreter::DexInvokeKind::Virtual,
+            range: false,
+            method_index: 0,
+            argument_registers: Default::default(),
+            arguments: vec![configuration.clone()].into_iter().collect(),
+        };
+
+        assert_eq!(
+            program.read_stored_instance_field(&configuration, &configuration_int_field("uiMode")),
+            Some(DexValue::Int(0x16))
+        );
+        assert_eq!(
+            program.read_stored_instance_field(
+                &configuration,
+                &configuration_int_field("screenLayout")
+            ),
+            Some(DexValue::Int(0x251))
+        );
+        assert_eq!(program.configuration_is_screen_round(&invocation), Some(1));
+
+        let resource_config = program.resource_resolution_config();
+        assert_eq!(resource_config.ui_mode, 0x16);
+        assert_eq!(resource_config.screen_layout2, 0x02);
+
+        let phone = DexProgram::with_config(Vec::new(), WinedroidConfig::default());
+        assert_eq!(phone.configuration_is_screen_round(&invocation), Some(0));
+    }
+
     // cite: frameworks-base ResourcesManager.java#applyDisplayMetricsToConfiguration
     // cite: frameworks-base Configuration.java#reduceScreenLayout, setLocales, setLayoutDirection
     #[test]
@@ -4235,7 +4295,7 @@ mod tests {
             ("compatScreenHeightDp", 600),
             ("compatSmallestScreenWidthDp", 600),
             ("orientation", CONFIGURATION_ORIENTATION_LANDSCAPE),
-            ("screenLayout", 0x1000_0063),
+            ("screenLayout", 0x1000_0163),
         ] {
             let field = configuration_int_field(name);
             let actual = program.read_stored_instance_field(&configuration, &field);

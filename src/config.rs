@@ -9,10 +9,12 @@ use crate::prefix::WinedroidPrefix;
 const DEFAULT_CONFIG_JSON: &str = "{\n  \"ui_mode\": \"system\",\n  \"frame_rate\": \"host\",\n  \"display\": {\n    \"width\": 420,\n    \"height\": 760\n  }\n}\n";
 
 const UI_MODE_TYPE_NORMAL: i32 = 0x01;
+const UI_MODE_TYPE_WATCH: i32 = 0x06;
 const UI_MODE_NIGHT_NO: i32 = 0x10;
 const UI_MODE_NIGHT_YES: i32 = 0x20;
 const DEFAULT_DISPLAY_WIDTH: u32 = 420;
 const DEFAULT_DISPLAY_HEIGHT: u32 = 760;
+const DEFAULT_WATCH_DISPLAY_SIZE: u32 = 227;
 const MAX_DISPLAY_DIMENSION: u32 = 4096;
 const MAX_DISPLAY_PIXELS: u64 = 2_097_152;
 
@@ -37,13 +39,13 @@ impl DisplaySize {
         Ok(Self { width, height })
     }
 
-    fn parse(value: &Value) -> Result<Self> {
+    fn parse(value: &Value) -> Result<(Self, Option<DisplayShape>)> {
         let Some(object) = value.as_object() else {
             return Err(WinedroidError::new("display must be an object"));
         };
 
         for key in object.keys() {
-            if key != "width" && key != "height" {
+            if key != "width" && key != "height" && key != "shape" {
                 return Err(WinedroidError::new(format!(
                     "unsupported display key `{key}`"
                 )));
@@ -52,7 +54,11 @@ impl DisplaySize {
 
         let width = parse_display_dimension(object.get("width"), "width")?;
         let height = parse_display_dimension(object.get("height"), "height")?;
-        Self::new(width, height)
+        let shape = match object.get("shape") {
+            Some(value) => Some(DisplayShape::parse(value)?),
+            None => None,
+        };
+        Ok((Self::new(width, height)?, shape))
     }
 
     pub(crate) fn width(self) -> u32 {
@@ -81,11 +87,86 @@ impl Default for DisplaySize {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DisplayShape {
+    Rectangular,
+    Round,
+}
+
+impl DisplayShape {
+    fn parse(value: &Value) -> Result<Self> {
+        let Some(value) = value.as_str() else {
+            return Err(WinedroidError::new("display.shape must be a string"));
+        };
+
+        match value {
+            "rectangular" => Ok(Self::Rectangular),
+            "round" => Ok(Self::Round),
+            _ => Err(WinedroidError::new(format!(
+                "display.shape must be `rectangular` or `round`, got `{value}`"
+            ))),
+        }
+    }
+
+    pub(crate) fn is_round(self) -> bool {
+        self == Self::Round
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WinedroidDevice {
+    Phone,
+    Watch,
+}
+
+impl WinedroidDevice {
+    fn parse(value: &Value) -> Result<Self> {
+        let Some(value) = value.as_str() else {
+            return Err(WinedroidError::new("device must be a string"));
+        };
+
+        match value {
+            "phone" => Ok(Self::Phone),
+            "watch" => Ok(Self::Watch),
+            _ => Err(WinedroidError::new(format!(
+                "device must be `phone` or `watch`, got `{value}`"
+            ))),
+        }
+    }
+
+    // cite: frameworks-base UiModeManagerService.java#updateConfigurationLocked, mWatch
+    fn ui_mode_type(self) -> i32 {
+        match self {
+            Self::Phone => UI_MODE_TYPE_NORMAL,
+            Self::Watch => UI_MODE_TYPE_WATCH,
+        }
+    }
+
+    fn default_display_size(self) -> DisplaySize {
+        match self {
+            Self::Phone => DisplaySize::default(),
+            Self::Watch => DisplaySize {
+                width: DEFAULT_WATCH_DISPLAY_SIZE,
+                height: DEFAULT_WATCH_DISPLAY_SIZE,
+            },
+        }
+    }
+
+    fn default_display_shape(self) -> DisplayShape {
+        match self {
+            Self::Phone => DisplayShape::Rectangular,
+            Self::Watch => DisplayShape::Round,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WinedroidConfig {
     ui_mode: WinedroidUiMode,
     frame_rate: WinedroidFrameRate,
+    device: WinedroidDevice,
     display_size: DisplaySize,
+    display_shape: DisplayShape,
 }
 
 impl Default for WinedroidConfig {
@@ -93,7 +174,9 @@ impl Default for WinedroidConfig {
         Self {
             ui_mode: WinedroidUiMode::System,
             frame_rate: WinedroidFrameRate::Host,
+            device: WinedroidDevice::Phone,
             display_size: DisplaySize::default(),
+            display_shape: DisplayShape::Rectangular,
         }
     }
 }
@@ -139,6 +222,11 @@ impl WinedroidConfig {
     }
 
     #[cfg(test)]
+    pub(crate) fn watch() -> Self {
+        Self::parse("{\"device\":\"watch\"}").expect("watch config should parse")
+    }
+
+    #[cfg(test)]
     pub(crate) fn with_display_size(width: u32, height: u32) -> Self {
         Self {
             display_size: DisplaySize::new(width, height)
@@ -153,7 +241,15 @@ impl WinedroidConfig {
     }
 
     pub(crate) fn android_configuration_ui_mode(&self) -> i32 {
-        self.ui_mode.android_configuration_ui_mode()
+        self.device.ui_mode_type() | self.ui_mode.android_configuration_ui_mode_night()
+    }
+
+    pub(crate) fn device(&self) -> WinedroidDevice {
+        self.device
+    }
+
+    pub(crate) fn display_shape(&self) -> DisplayShape {
+        self.display_shape
     }
 
     pub(crate) fn frame_rate(&self) -> WinedroidFrameRate {
@@ -172,7 +268,7 @@ impl WinedroidConfig {
         };
 
         for key in object.keys() {
-            if key != "ui_mode" && key != "frame_rate" && key != "display" {
+            if key != "ui_mode" && key != "frame_rate" && key != "device" && key != "display" {
                 return Err(WinedroidError::new(format!(
                     "unsupported config key `{key}`"
                 )));
@@ -189,15 +285,23 @@ impl WinedroidConfig {
             None => WinedroidFrameRate::Host,
         };
 
-        let display_size = match object.get("display") {
-            Some(value) => DisplaySize::parse(value)?,
-            None => DisplaySize::default(),
+        let device = match object.get("device") {
+            Some(value) => WinedroidDevice::parse(value)?,
+            None => WinedroidDevice::Phone,
         };
+
+        let (display_size, display_shape) = match object.get("display") {
+            Some(value) => DisplaySize::parse(value)?,
+            None => (device.default_display_size(), None),
+        };
+        let display_shape = display_shape.unwrap_or(device.default_display_shape());
 
         Ok(Self {
             ui_mode,
             frame_rate,
+            device,
             display_size,
+            display_shape,
         })
     }
 }
@@ -255,12 +359,12 @@ impl WinedroidUiMode {
         }
     }
 
-    fn android_configuration_ui_mode(self) -> i32 {
+    fn android_configuration_ui_mode_night(self) -> i32 {
         match self {
             // cite: frameworks-base UiModeManagerService.java#updateConfigurationLocked
-            Self::System => UI_MODE_TYPE_NORMAL | UI_MODE_NIGHT_NO,
-            Self::Light => UI_MODE_TYPE_NORMAL | UI_MODE_NIGHT_NO,
-            Self::Dark => UI_MODE_TYPE_NORMAL | UI_MODE_NIGHT_YES,
+            Self::System => UI_MODE_NIGHT_NO,
+            Self::Light => UI_MODE_NIGHT_NO,
+            Self::Dark => UI_MODE_NIGHT_YES,
         }
     }
 }
@@ -356,6 +460,58 @@ mod tests {
 
         assert_eq!(light.android_configuration_ui_mode(), 0x11);
         assert_eq!(dark.android_configuration_ui_mode(), 0x21);
+    }
+
+    // cite: frameworks-base UiModeManagerService.java#updateConfigurationLocked, mWatch
+    // cite: frameworks-base Configuration.java#UI_MODE_TYPE_WATCH
+    #[test]
+    fn watch_device_reports_watch_ui_mode_type_and_round_default_display() {
+        let watch = WinedroidConfig::parse("{\"device\":\"watch\",\"ui_mode\":\"dark\"}")
+            .expect("watch config should parse");
+
+        assert_eq!(watch.device(), WinedroidDevice::Watch);
+        assert_eq!(watch.android_configuration_ui_mode(), 0x26);
+        assert_eq!(watch.display_size(), DisplaySize::new(227, 227).unwrap());
+        assert_eq!(watch.display_shape(), DisplayShape::Round);
+    }
+
+    #[test]
+    fn display_shape_is_explicit_or_follows_device() {
+        let square_watch = WinedroidConfig::parse(
+            "{\"device\":\"watch\",\"display\":{\"width\":200,\"height\":200,\"shape\":\"rectangular\"}}",
+        )
+        .expect("rectangular watch should parse");
+        let round_phone = WinedroidConfig::parse(
+            "{\"display\":{\"width\":300,\"height\":300,\"shape\":\"round\"}}",
+        )
+        .expect("round phone display should parse");
+        let sized_watch = WinedroidConfig::parse(
+            "{\"device\":\"watch\",\"display\":{\"width\":192,\"height\":192}}",
+        )
+        .expect("sized watch should parse");
+
+        assert_eq!(square_watch.display_shape(), DisplayShape::Rectangular);
+        assert_eq!(round_phone.display_shape(), DisplayShape::Round);
+        assert_eq!(round_phone.android_configuration_ui_mode(), 0x11);
+        assert_eq!(sized_watch.display_shape(), DisplayShape::Round);
+        assert_eq!(
+            sized_watch.display_size(),
+            DisplaySize::new(192, 192).unwrap()
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_device_and_shape() {
+        for invalid in [
+            "{\"device\":\"tv\"}",
+            "{\"device\":1}",
+            "{\"display\":{\"width\":200,\"height\":200,\"shape\":\"oval\"}}",
+        ] {
+            assert!(
+                WinedroidConfig::parse(invalid).is_err(),
+                "config `{invalid}` should be rejected"
+            );
+        }
     }
 
     #[test]

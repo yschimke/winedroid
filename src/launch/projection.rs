@@ -493,6 +493,7 @@ pub(super) fn activity_dialog_overlays(
             resource_ui_mode: activity_snapshot.resource_ui_mode,
             resource_display_width: activity_snapshot.resource_display_width,
             resource_display_height: activity_snapshot.resource_display_height,
+            resource_screen_round: activity_snapshot.resource_screen_round,
             runtime_view_roots: Vec::new(),
             runtime_canvas_frames: Vec::new(),
             view_lookup_ids: Vec::new(),

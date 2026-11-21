@@ -1,5 +1,7 @@
 use super::super::*;
 
+const ANDROID_FEATURE_WATCH: &str = "android.hardware.type.watch";
+
 impl DexProgram {
     pub(super) fn invoke_android_content_storage_builtin(
         &self,
@@ -570,7 +572,11 @@ impl DexProgram {
             && method.name == "hasSystemFeature"
             && method.proto.descriptor_is("(Ljava/lang/String;)Z")
         {
-            return Some(DexExecutionResult::Int(0));
+            let value = invocation
+                .map(|invocation| self.package_manager_has_system_feature(invocation))
+                .unwrap_or(0);
+
+            return Some(DexExecutionResult::Int(value));
         }
 
         if method.class_descriptor == "Landroid/content/pm/PackageManager;"
@@ -858,6 +864,17 @@ impl DexProgram {
         Some(DexExecutionResult::Value(DexValue::Reference(
             std::rc::Rc::from(format!("Ljava/io/File;:{path}")),
         )))
+    }
+
+    fn package_manager_has_system_feature(&self, invocation: &DexInvocation) -> i32 {
+        let Some(DexValue::String(feature)) = invocation.arguments.get(1) else {
+            return 0;
+        };
+
+        // cite: frameworks-base PackageManager.java#FEATURE_WATCH
+        // cite: frameworks-base UiModeManagerService.java#mWatch
+        let watch = self.config.device() == crate::config::WinedroidDevice::Watch;
+        i32::from(watch && feature.as_ref() == ANDROID_FEATURE_WATCH)
     }
 
     fn package_manager_check_permission(&self, invocation: &DexInvocation) -> Option<i32> {

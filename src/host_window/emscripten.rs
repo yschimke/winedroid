@@ -318,18 +318,20 @@ fn present_active_surface() -> Result<()> {
         .ok_or_else(|| WinedroidError::new("browser renderer has no active surface"))?;
     let surface = scrolled_render_surface(&surface, width, height);
     let pixel_scale = unsafe { winedroid_web_device_pixel_ratio() }.clamp(1.0, 3.0) as f32;
-    let image = skia_renderer::render_activity_surface_scaled(
-        width,
-        height,
-        &surface.message,
-        &surface.text_elements,
-        &surface.runtime_canvas_frames,
-        &surface.overlays,
-        &surface.dialogs,
-        surface.action_bar.as_ref(),
-        surface.floating_panel,
-        surface.window_background,
-        pixel_scale,
+    let image = crate::host_window::session::present_on_display_panel(
+        skia_renderer::render_activity_surface_scaled(
+            width,
+            height,
+            &surface.message,
+            &surface.text_elements,
+            &surface.runtime_canvas_frames,
+            &surface.overlays,
+            &surface.dialogs,
+            surface.action_bar.as_ref(),
+            surface.floating_panel,
+            surface.window_background,
+            pixel_scale,
+        )?,
     )?;
     unsafe {
         winedroid_web_present_png(

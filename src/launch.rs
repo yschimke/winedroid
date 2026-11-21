@@ -182,6 +182,7 @@ fn run_installed(
 
     let frame_interval_nanos = configured_frame_interval_nanos(&config);
     let display_size = config.display_size();
+    let display_round = config.display_shape().is_round();
     let shared_storage_dir = prefix.storage_root();
     let activity_runtime = {
         let _span = trace::span("runtime", "start activity runtime worker");
@@ -199,6 +200,7 @@ fn run_installed(
         &installed_app.launch_activity,
         display_size,
     )
+    .with_display_round(display_round)
     .with_frame_interval_nanos(frame_interval_nanos)
     .with_screenshots_dir(Some(crate::external_storage::screenshots_dir(prefix)?));
     {
@@ -598,6 +600,7 @@ mod tests {
             resource_ui_mode: 0,
             resource_display_width: 420,
             resource_display_height: 760,
+            resource_screen_round: false,
             runtime_view_roots: vec![dex_run::DexRuntimeViewRoot {
                 view_key: "object:12".to_owned(),
                 class_descriptor: "Landroidx/compose/ui/platform/ComposeView;".to_owned(),

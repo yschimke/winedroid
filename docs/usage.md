@@ -61,6 +61,33 @@ drives Android display metrics, configuration and resource selection, layout,
 input coordinates, rendering, and the host surface as one immutable session
 value.
 
+Wear OS devices
+---------------
+
+Set `device` to `watch` to run a prefix as a Wear OS device:
+
+```json
+{
+  "device": "watch",
+  "display": {
+    "width": 227,
+    "height": 227,
+    "shape": "round"
+  }
+}
+```
+
+A watch reports `Configuration.UI_MODE_TYPE_WATCH` in `uiMode`, so `-watch`
+resources are selected, and `PackageManager.hasSystemFeature` reports
+`android.hardware.type.watch`. `display.shape` is `round` or `rectangular`. It
+defaults to `round` for a watch and `rectangular` for a phone. A round display
+sets `Configuration.SCREENLAYOUT_ROUND_YES`, which selects `-round` resources
+and makes `Configuration.isScreenRound()` true. The host draws the panel as a
+circle and ignores pointer input outside it. When `display` is omitted, a watch
+uses a `227x227` round display, the logical size of a 454px xhdpi Wear OS
+emulator. See [wear.md](wear.md) for coverage and the paired phone/watch
+design.
+
 Uninstall a package:
 
 ```sh

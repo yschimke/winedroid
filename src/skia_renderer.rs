@@ -471,6 +471,86 @@ pub fn render_screenshot_flash_pixels_scaled(
     })
 }
 
+pub fn mask_round_display(image: &mut SkiaSurfaceImage) -> Result<()> {
+    if image.width == 0 || image.height == 0 {
+        return Err(WinedroidError::new(format!(
+            "round display mask requires nonzero dimensions\nsize: {}x{}",
+            image.width, image.height
+        )));
+    }
+
+    let image_info = ImageInfo::new(
+        (image.width as i32, image.height as i32),
+        ColorType::BGRA8888,
+        AlphaType::Premul,
+        None,
+    );
+    let row_bytes = image.width as usize * 4;
+
+    if !image.pixels.is_empty() {
+        let source_bytes = softbuffer_pixels_to_opaque_bgra(&image.pixels);
+        let source = skia_safe::images::raster_from_data(
+            &image_info,
+            Data::new_copy(&source_bytes),
+            row_bytes,
+        )
+        .ok_or_else(|| WinedroidError::new("failed to wrap frame pixels for round display mask"))?;
+        let (masked_bytes, _) = draw_round_display_mask(&image_info, row_bytes, &source, false)?;
+        image.pixels = opaque_softbuffer_pixels(&masked_bytes, Color::BLACK);
+    }
+
+    if !image.png.is_empty() {
+        let source = Image::from_encoded(Data::new_copy(&image.png)).ok_or_else(|| {
+            WinedroidError::new("failed to decode frame PNG for round display mask")
+        })?;
+        let (_, png) = draw_round_display_mask(&image_info, row_bytes, &source, true)?;
+        image.png = png;
+    }
+
+    Ok(())
+}
+
+fn draw_round_display_mask(
+    image_info: &ImageInfo,
+    row_bytes: usize,
+    source: &Image,
+    encode_png: bool,
+) -> Result<(Vec<u8>, Vec<u8>)> {
+    let width = image_info.width();
+    let height = image_info.height();
+    let mut pixel_bytes = vec![0u8; row_bytes * height as usize];
+    let mut surface = surfaces::wrap_pixels(image_info, &mut pixel_bytes, row_bytes, None)
+        .ok_or_else(|| {
+            WinedroidError::new(format!(
+                "failed to create Skia round display surface\nsize: {width}x{height}"
+            ))
+        })?;
+
+    {
+        let canvas = surface.canvas();
+        canvas.clear(Color::BLACK);
+        let diameter = width.min(height) as f32;
+        let panel = Rect::from_xywh(
+            (width as f32 - diameter) / 2.0,
+            (height as f32 - diameter) / 2.0,
+            diameter,
+            diameter,
+        );
+        canvas.save();
+        canvas.clip_rrect(RRect::new_oval(panel), skia_safe::ClipOp::Intersect, true);
+        canvas.draw_image(source, (0, 0), None);
+        canvas.restore();
+    }
+
+    let png = if encode_png {
+        encode_surface_png(&mut surface)?
+    } else {
+        Vec::new()
+    };
+    drop(surface);
+    Ok((pixel_bytes, png))
+}
+
 fn softbuffer_pixels_to_opaque_bgra(pixels: &[u32]) -> Vec<u8> {
     let mut pixel_bytes = Vec::with_capacity(pixels.len() * 4);
     for pixel in pixels {
@@ -3312,6 +3392,62 @@ fn list_item_text(text: &str) -> (String, Option<String>) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn round_display_mask_blacks_out_corners_and_keeps_center() {
+        let mut image = super::SkiaSurfaceImage {
+            width: 20,
+            height: 20,
+            png: Vec::new(),
+            pixels: vec![0x00ff_ffff; 400],
+        };
+        super::mask_round_display(&mut image).expect("pixel mask should apply");
+
+        assert_eq!(image.pixels[0], 0);
+        assert_eq!(image.pixels[19], 0);
+        assert_eq!(image.pixels[399], 0);
+        assert_eq!(image.pixels[10 * 20 + 10], 0x00ff_ffff);
+        assert_eq!(image.pixels[3 * 20 + 10], 0x00ff_ffff);
+    }
+
+    #[test]
+    fn round_display_mask_reencodes_png_frames() {
+        let mut image = super::render_activity_surface(
+            40,
+            40,
+            "",
+            &[],
+            &[],
+            &[],
+            &[],
+            None,
+            None,
+            Some(0xffff_ffff),
+        )
+        .expect("surface should render");
+        super::mask_round_display(&mut image).expect("png mask should apply");
+        let decoded = skia_safe::Image::from_encoded(skia_safe::Data::new_copy(&image.png))
+            .expect("masked png should decode");
+
+        assert_eq!((decoded.width(), decoded.height()), (40, 40));
+        let info = skia_safe::ImageInfo::new(
+            (40, 40),
+            skia_safe::ColorType::BGRA8888,
+            skia_safe::AlphaType::Premul,
+            None,
+        );
+        let mut bytes = vec![0u8; 40 * 40 * 4];
+        assert!(decoded.read_pixels(
+            &info,
+            &mut bytes,
+            40 * 4,
+            (0, 0),
+            skia_safe::image::CachingHint::Allow
+        ));
+        assert_eq!(&bytes[0..3], &[0, 0, 0]);
+        let center = (20 * 40 + 20) * 4;
+        assert_eq!(&bytes[center..center + 3], &[255, 255, 255]);
+    }
+
     use super::*;
     use crate::binary_xml::XmlAttribute;
 

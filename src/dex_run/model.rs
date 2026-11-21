@@ -46,6 +46,7 @@ pub struct DexViewSnapshot {
     pub resource_ui_mode: i32,
     pub resource_display_width: u16,
     pub resource_display_height: u16,
+    pub resource_screen_round: bool,
     pub runtime_view_roots: Vec<DexRuntimeViewRoot>,
     pub runtime_canvas_frames: Vec<DexRuntimeCanvasFrame>,
     pub view_lookup_ids: Vec<i32>,

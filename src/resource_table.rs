@@ -21,6 +21,7 @@ const VALUE_TYPE_INT_BOOLEAN: u8 = 0x12;
 const VALUE_TYPE_FIRST_COLOR_INT: u8 = 0x1c;
 const VALUE_TYPE_LAST_COLOR_INT: u8 = 0x1f;
 const DEFAULT_ANDROID_SDK_VERSION: u16 = 35;
+const UI_MODE_TYPE_MASK: u8 = 0x0f;
 const UI_MODE_NIGHT_MASK: u8 = 0x30;
 const ORIENTATION_PORT: u8 = 1;
 const ORIENTATION_LAND: u8 = 2;
@@ -35,6 +36,10 @@ const SCREEN_LAYOUT_LONG_YES: u8 = 0x20;
 const SCREEN_LAYOUT_DIRECTION_MASK: u8 = 0xc0;
 const SCREEN_LAYOUT_DIRECTION_LTR: u8 = 0x40;
 const SCREEN_LAYOUT_COMPAT_NEEDED: i32 = 0x1000_0000;
+const SCREEN_ROUND_MASK: u8 = 0x03;
+const SCREEN_ROUND_NO: u8 = 0x01;
+const SCREEN_ROUND_YES: u8 = 0x02;
+const CONFIGURATION_SCREENLAYOUT_ROUND_SHIFT: i32 = 8;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResourceTableSummary {
@@ -84,6 +89,7 @@ pub struct ResourceResolutionConfig {
     pub ui_mode: u8,
     pub orientation: u8,
     pub screen_layout: u8,
+    pub screen_layout2: u8,
     pub smallest_screen_width_dp: u16,
     pub screen_width_dp: u16,
     pub screen_height_dp: u16,
@@ -99,6 +105,7 @@ impl ResourceResolutionConfig {
             ui_mode: ui_mode as u8,
             orientation: 0,
             screen_layout: 0,
+            screen_layout2: 0,
             smallest_screen_width_dp: 0,
             screen_width_dp: 0,
             screen_height_dp: 0,
@@ -119,6 +126,7 @@ impl ResourceResolutionConfig {
             ui_mode: ui_mode as u8,
             orientation,
             screen_layout: screen_layout_for_display(width, height) as u8,
+            screen_layout2: SCREEN_ROUND_NO,
             smallest_screen_width_dp: width.min(height),
             screen_width_dp: width,
             screen_height_dp: height,
@@ -126,6 +134,29 @@ impl ResourceResolutionConfig {
             screen_height_px: width.min(height),
         }
     }
+
+    // cite: frameworks-base DisplayContent.java#computeScreenConfiguration
+    // cite: frameworks-base ResourceTypes.h#screenLayout2, MASK_SCREENROUND
+    pub fn with_screen_round(mut self, round: bool) -> Self {
+        self.screen_layout2 = (self.screen_layout2 & !SCREEN_ROUND_MASK)
+            | if round {
+                SCREEN_ROUND_YES
+            } else {
+                SCREEN_ROUND_NO
+            };
+        self
+    }
+}
+
+// cite: frameworks-base Configuration.java#SCREENLAYOUT_ROUND_MASK, SCREENLAYOUT_ROUND_SHIFT
+// cite: frameworks-base DisplayContent.java#computeScreenConfiguration
+pub(crate) fn configuration_screen_layout_round_bits(round: bool) -> i32 {
+    let round = if round {
+        SCREEN_ROUND_YES
+    } else {
+        SCREEN_ROUND_NO
+    };
+    i32::from(round) << CONFIGURATION_SCREENLAYOUT_ROUND_SHIFT
 }
 
 impl Default for ResourceResolutionConfig {
@@ -135,6 +166,7 @@ impl Default for ResourceResolutionConfig {
             ui_mode: 0,
             orientation: 0,
             screen_layout: 0,
+            screen_layout2: 0,
             smallest_screen_width_dp: 0,
             screen_width_dp: 0,
             screen_height_dp: 0,
@@ -1299,6 +1331,7 @@ struct ResourceTypeConfig {
     ui_mode: u8,
     orientation: u8,
     screen_layout: u8,
+    screen_layout2: u8,
     smallest_screen_width_dp: u16,
     screen_width_dp: u16,
     screen_height_dp: u16,
@@ -1313,6 +1346,7 @@ impl ResourceTypeConfig {
             ui_mode: 0,
             orientation: 0,
             screen_layout: 0,
+            screen_layout2: 0,
             smallest_screen_width_dp: 0,
             screen_width_dp: 0,
             screen_height_dp: 0,
@@ -1327,9 +1361,21 @@ impl ResourceTypeConfig {
             return false;
         }
 
+        let requested_ui_mode_type = requested.ui_mode & UI_MODE_TYPE_MASK;
+        let candidate_ui_mode_type = self.ui_mode & UI_MODE_TYPE_MASK;
+        if candidate_ui_mode_type != 0 && candidate_ui_mode_type != requested_ui_mode_type {
+            return false;
+        }
+
         let requested_night = requested.ui_mode & UI_MODE_NIGHT_MASK;
         let candidate_night = self.ui_mode & UI_MODE_NIGHT_MASK;
         if candidate_night != 0 && candidate_night != requested_night {
+            return false;
+        }
+
+        let requested_round = requested.screen_layout2 & SCREEN_ROUND_MASK;
+        let candidate_round = self.screen_layout2 & SCREEN_ROUND_MASK;
+        if candidate_round != 0 && candidate_round != requested_round {
             return false;
         }
 
@@ -1374,6 +1420,13 @@ impl ResourceTypeConfig {
         let requested_night = requested.ui_mode & UI_MODE_NIGHT_MASK;
         let candidate_night = self.ui_mode & UI_MODE_NIGHT_MASK;
         let night_score = u8::from(candidate_night != 0 && candidate_night == requested_night);
+        let ui_mode_type_score = u8::from(
+            self.ui_mode & UI_MODE_TYPE_MASK != 0 && requested.ui_mode & UI_MODE_TYPE_MASK != 0,
+        );
+        let screen_round_score = u8::from(
+            self.screen_layout2 & SCREEN_ROUND_MASK != 0
+                && requested.screen_layout2 & SCREEN_ROUND_MASK != 0,
+        );
         let orientation_score = u8::from(self.orientation != 0);
         let layout_direction_score =
             u8::from(self.screen_layout & SCREEN_LAYOUT_DIRECTION_MASK != 0);
@@ -1413,7 +1466,9 @@ impl ResourceTypeConfig {
             screen_size_score,
             screen_size_explicit,
             screen_long_score,
+            screen_round_score,
             orientation_score,
+            ui_mode_type_score,
             night_score,
             legacy_screen_size_closeness: u32::MAX - legacy_screen_size_delta,
             sdk_version: self.sdk_version,
@@ -1429,7 +1484,9 @@ struct ResourceTypeConfigScore {
     screen_size_score: u8,
     screen_size_explicit: u8,
     screen_long_score: u8,
+    screen_round_score: u8,
     orientation_score: u8,
+    ui_mode_type_score: u8,
     night_score: u8,
     legacy_screen_size_closeness: u32,
     sdk_version: u16,
@@ -1496,6 +1553,11 @@ fn read_type_config(
     } else {
         (0, 0)
     };
+    let screen_layout2 = if config_size >= 49 {
+        read_u8(data, config_offset + 48)?
+    } else {
+        0
+    };
     let (screen_width_px, screen_height_px) = if config_size >= 24 {
         (
             read_u16(data, config_offset + 20)?,
@@ -1512,6 +1574,7 @@ fn read_type_config(
         ui_mode,
         orientation,
         screen_layout,
+        screen_layout2,
         smallest_screen_width_dp,
         screen_width_dp,
         screen_height_dp,
@@ -2294,6 +2357,79 @@ mod tests {
         assert_eq!(resource.value, ResourcePrimitive::Color(0xff00_0002));
     }
 
+    // cite: frameworks-base ResourceTypes.cpp#ResTable_config::match, ResTable_config::isBetterThan
+    // cite: frameworks-base ResourceTypes.h#MASK_UI_MODE_TYPE, UI_MODE_TYPE_WATCH
+    #[test]
+    fn resource_type_watch_qualifier_requires_watch_ui_mode_type() {
+        let data = minimal_resource_table_with_type_chunks(
+            string_pool(&[]),
+            "color",
+            "background",
+            vec![
+                type_chunk(VALUE_TYPE_FIRST_COLOR_INT, 0xffff_ffff),
+                type_chunk_with_config(
+                    VALUE_TYPE_FIRST_COLOR_INT,
+                    0xff00_0000,
+                    res_table_config(0, 0x06),
+                ),
+                type_chunk_with_config(
+                    VALUE_TYPE_FIRST_COLOR_INT,
+                    0xff11_1111,
+                    res_table_config(0, 0x20),
+                ),
+            ],
+        );
+        let phone = ResourceResolutionConfig::android_with_display(35, 0x11, 420, 760);
+        let watch = ResourceResolutionConfig::android_with_display(35, 0x16, 227, 227);
+        let dark_watch = ResourceResolutionConfig::android_with_display(35, 0x26, 227, 227);
+
+        for (requested, expected) in [
+            (phone, 0xffff_ffff),
+            (watch, 0xff00_0000),
+            (dark_watch, 0xff00_0000),
+        ] {
+            let resource = resolve_resource_value_for_config(&data, 0x7f01_0000, requested)
+                .expect("resource table should parse")
+                .expect("resource should resolve");
+            assert_eq!(resource.value, ResourcePrimitive::Color(expected));
+        }
+    }
+
+    // cite: frameworks-base ResourceTypes.cpp#ResTable_config::match, ResTable_config::isBetterThan
+    // cite: frameworks-base ResourceTypes.h#screenLayout2, MASK_SCREENROUND
+    #[test]
+    fn resource_type_round_qualifier_follows_display_shape() {
+        let data = minimal_resource_table_with_type_chunks(
+            string_pool(&[]),
+            "dimen",
+            "inset",
+            vec![
+                type_chunk(VALUE_TYPE_INT_DEC, 1),
+                type_chunk_with_config(VALUE_TYPE_INT_DEC, 2, res_table_screen_round_config(0x02)),
+                type_chunk_with_config(VALUE_TYPE_INT_DEC, 3, res_table_screen_round_config(0x01)),
+            ],
+        );
+        let display = ResourceResolutionConfig::android_with_display(35, 0x16, 227, 227);
+
+        for (requested, expected) in [
+            (display.with_screen_round(true), 2),
+            (display.with_screen_round(false), 3),
+            (ResourceResolutionConfig::android(35, 0x16), 1),
+        ] {
+            let resource = resolve_resource_value_for_config(&data, 0x7f01_0000, requested)
+                .expect("resource table should parse")
+                .expect("resource should resolve");
+            assert_eq!(resource.value, ResourcePrimitive::Integer(expected));
+        }
+    }
+
+    // cite: frameworks-base Configuration.java#SCREENLAYOUT_ROUND_YES, SCREENLAYOUT_ROUND_NO
+    #[test]
+    fn configuration_screen_layout_round_bits_match_framework_constants() {
+        assert_eq!(configuration_screen_layout_round_bits(true), 0x200);
+        assert_eq!(configuration_screen_layout_round_bits(false), 0x100);
+    }
+
     fn minimal_resource_table(type_name: &str, key_name: &str, value: &str) -> Vec<u8> {
         let global_strings = string_pool(&[value]);
         minimal_resource_table_with_value(global_strings, type_name, key_name, VALUE_TYPE_STRING, 0)
@@ -2511,6 +2647,13 @@ mod tests {
         let mut config = vec![0; 32];
         write_u32(&mut config, 0, 32);
         config[28] = screen_layout;
+        config
+    }
+
+    fn res_table_screen_round_config(screen_layout2: u8) -> Vec<u8> {
+        let mut config = vec![0; 52];
+        write_u32(&mut config, 0, 52);
+        config[48] = screen_layout2;
         config
     }
 
